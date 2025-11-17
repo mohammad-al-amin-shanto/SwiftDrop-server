@@ -1,13 +1,14 @@
 // src/app.ts
-import express, { Request, Response, NextFunction } from "express";
+import express from "express";
+import type { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
 import parcelsRouter from "./routes/parcels.routes";
 import usersRouter from "./routes/users.routes";
-import authRouter from "./routes/auth.routes"; // optional auth routes (login/register)
+import authRouter from "./routes/auth.routes";
 import { getDashboardSummary } from "./controllers/dashboard.controller";
-import { authenticate, allowRoles } from "./middleware/auth.middleware"; // see note below
+import { authenticate, allowRoles } from "./middleware/auth.middleware";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 
@@ -24,8 +25,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 /**
- * Public / auth routes (if you have an auth router)
- * Keep auth endpoints public (login/register)
+ * Public / auth routes
  */
 if (authRouter) {
   app.use("/api/auth", authRouter);
@@ -33,22 +33,16 @@ if (authRouter) {
 
 /**
  * API routes
- * - parcelsRouter should handle create/list/update/cancel etc.
- * - usersRouter should handle user management (protected below)
- *
- * Note: ensure those files export a Router as default:
- *   export default router;
  */
 app.use("/api/parcels", parcelsRouter);
 
 /**
  * Protect admin user management routes with authentication + role check
- * (adjust middleware order/logic to match your implementation)
  */
 app.use("/api/users", authenticate, allowRoles("admin"), usersRouter);
 
 /**
- * Dashboard summary: allow admin/sender/receiver (example)
+ * Dashboard summary: allow admin/sender/receiver
  */
 app.get(
   "/api/dashboard/summary",
@@ -77,25 +71,20 @@ app.use((_req: Request, res: Response) => {
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   // lightweight error normalization
   const status =
-    (err &&
-      typeof err === "object" &&
-      "status" in err &&
-      Number((err as any).status)) ||
-    500;
+    typeof err === "object" && err !== null && "status" in err
+      ? Number((err as { status?: unknown }).status) || 500
+      : 500;
   const message =
-    (err &&
-      typeof err === "object" &&
-      "message" in err &&
-      String((err as any).message)) ||
-    "Internal server error";
-  // You can expand logging here (Sentry, pino, etc.)
+    typeof err === "object" && err !== null && "message" in err
+      ? String((err as { message?: unknown }).message)
+      : "Internal server error";
+
   console.error("Server error:", err);
   res.status(status).json({ error: message });
 });
 
 /**
  * Start server if run directly (useful for local dev)
- * If you prefer starting server in separate file (bin/www), remove this block.
  */
 if (require.main === module) {
   app.listen(PORT, () => {
