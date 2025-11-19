@@ -1,9 +1,9 @@
-import { Request, Response, NextFunction } from "express";
+// src/middleware/auth.middleware.ts
+import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { Types } from "mongoose";
 import User from "../models/User.model";
 
-const JWT_SECRET = process.env.JWT_SECRET || "change_me";
+const JWT_SECRET = process.env.JWT_SECRET ?? "change_me";
 
 export interface AuthedUser {
   id: string;
@@ -11,6 +11,11 @@ export interface AuthedUser {
   email?: string;
 }
 
+/*
+ * Authenticate middleware:
+ * - verifies Bearer token
+ * - optionally fetches user to ensure not blocked
+ */
 export async function authenticate(
   req: Request,
   res: Response,
@@ -37,27 +42,49 @@ export async function authenticate(
         .json({ status: "fail", message: "Invalid or expired token" });
     }
 
-    // optional: fetch user to confirm still valid / not blocked
+    // payload must contain an `id`
+    if (!payload?.id) {
+      return res
+        .status(401)
+        .json({ status: "fail", message: "Invalid token payload" });
+    }
+
+    // confirm user exists and not blocked
     const user = await User.findById(payload.id).select(
       "+isBlocked +role +email"
     );
-    if (!user)
+    if (!user) {
       return res
         .status(401)
         .json({ status: "fail", message: "User not found" });
-    if (user.isBlocked)
+    }
+    if (user.isBlocked) {
       return res
         .status(403)
         .json({ status: "fail", message: "User is blocked" });
+    }
 
+    // attach typed user to request
     (req as any).user = {
       id: user._id.toString(),
       role: user.role,
       email: user.email,
     } as AuthedUser;
+
     next();
   } catch (err) {
     console.error("auth.middleware error", err);
     return res.status(500).json({ status: "error", message: "Server error" });
   }
+}
+
+/** Role guard: allow only the listed roles */
+export function allowRoles(...allowed: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as any).user as AuthedUser | undefined;
+    if (!user?.role || !allowed.includes(user.role)) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    next();
+  };
 }

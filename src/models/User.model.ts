@@ -1,4 +1,3 @@
-// src/models/User.model.ts (mongoose + TypeScript)
 import { Schema, model, Document } from "mongoose";
 
 export type Role = "sender" | "receiver" | "admin" | "delivery";
