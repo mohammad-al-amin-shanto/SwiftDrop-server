@@ -83,18 +83,4 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ error: message });
 });
 
-/**
- * Start server if run directly (useful for local dev)
- */
-if (require.main === module) {
-  app.listen(PORT, () => {
-    // eslint-disable-next-line no-console
-    console.log(
-      `Server listening on http://localhost:${PORT} (env=${
-        process.env.NODE_ENV || "dev"
-      })`
-    );
-  });
-}
-
 export default app;
