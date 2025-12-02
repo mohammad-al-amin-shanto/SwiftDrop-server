@@ -26,9 +26,6 @@ export interface IUser extends Document {
 
 /**
  * User schema
- * - password: select: false so queries don't return it accidentally
- * - shortId: unique + indexed so you can login by it or lookup quickly
- * - email: unique + indexed for fast lookup
  */
 const UserSchema = new Schema<IUser>(
   {
@@ -37,7 +34,7 @@ const UserSchema = new Schema<IUser>(
       type: String,
       required: true,
       unique: true,
-      index: true,
+      index: true, // keep this
       lowercase: true,
       trim: true,
     },
@@ -58,7 +55,6 @@ const UserSchema = new Schema<IUser>(
     isBlocked: { type: Boolean, default: false },
     refreshTokenHash: { type: String, select: false, default: null },
 
-    // optional profile contact fields
     phone: { type: String, default: null },
     address: { type: String, default: null },
   },
@@ -66,10 +62,10 @@ const UserSchema = new Schema<IUser>(
     timestamps: true,
     collection: "users",
     toJSON: {
-      // use any for transform args so TS doesn't complain about deleting keys
-      transform(doc: any, ret: any) {
-        // Remove sensitive/internal fields before sending to clients
+      transform(_doc: any, ret: any) {
+        // remove sensitive/internal fields before sending to clients
         if (ret) {
+          // use `any` to avoid TS structural issues here
           delete (ret as any).password;
           delete (ret as any).refreshTokenHash;
         }
@@ -77,7 +73,7 @@ const UserSchema = new Schema<IUser>(
       },
     },
     toObject: {
-      transform(doc: any, ret: any) {
+      transform(_doc: any, ret: any) {
         if (ret) {
           delete (ret as any).password;
           delete (ret as any).refreshTokenHash;
@@ -88,10 +84,10 @@ const UserSchema = new Schema<IUser>(
   }
 );
 
-/**
- * Additional indexes (email and shortId already have indexes above).
- * Keep them explicit if you want compound or additional indexes later.
+/*
+ * NOTE: do NOT call `UserSchema.index({ email: 1 })` here because `email` already
+ * has `index: true`. Removing duplicate index definitions avoids the duplicate-index
+ * warning on startup.
  */
-UserSchema.index({ email: 1 });
 
 export default model<IUser>("User", UserSchema);

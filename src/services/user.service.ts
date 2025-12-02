@@ -14,14 +14,18 @@ export interface CreateUserDTO {
 
 /**
  * Create a user and attempt to assign a unique shortId.
- * Tries a few times to avoid collisions.
+ * Tries multiple candidates to avoid collisions.
  */
 export async function createUser(dto: CreateUserDTO): Promise<IUser> {
-  let shortId: string | undefined;
+  // Ensure email stored lowercased
+  const email = String(dto.email).trim().toLowerCase();
 
-  // try several candidates to avoid a collision
-  for (let i = 0; i < 6; i++) {
+  // Try several candidates to avoid collisions (rare)
+  let shortId: string | undefined;
+  const maxAttempts = 10;
+  for (let i = 0; i < maxAttempts; i++) {
     const candidate = generateShortId(8);
+    // `.lean().exec()` avoids hydrating the document and is fast
     const exists = await User.findOne({ shortId: candidate }).lean().exec();
     if (!exists) {
       shortId = candidate;
@@ -31,7 +35,7 @@ export async function createUser(dto: CreateUserDTO): Promise<IUser> {
 
   const user = await User.create({
     name: dto.name,
-    email: dto.email.toLowerCase(),
+    email,
     password: dto.password,
     role: dto.role ?? "sender",
     shortId,
@@ -44,7 +48,7 @@ export async function createUser(dto: CreateUserDTO): Promise<IUser> {
 
 export async function findByEmail(email: string): Promise<IUser | null> {
   if (!email) return null;
-  return User.findOne({ email: email.toLowerCase() }).exec();
+  return User.findOne({ email: String(email).toLowerCase() }).exec();
 }
 
 export async function findByShortId(shortId: string): Promise<IUser | null> {
