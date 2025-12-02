@@ -1,16 +1,41 @@
 // src/app.ts
+/* eslint-disable @typescript-eslint/no-var-requires */
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
-import parcelsRouter from "./routes/parcels.routes";
-import usersRouter from "./routes/users.routes";
-import authRouter from "./routes/auth.routes";
 import { getDashboardSummary } from "./controllers/dashboard.controller";
 import { authenticate, allowRoles } from "./middleware/auth.middleware";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
+
+/**
+ * Defensive router loader:
+ * Try require(...) and return default export or module itself.
+ * If loading fails, return null and log a helpful message.
+ */
+function tryLoadRouter(path: string) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-var-requires
+    const mod = require(path);
+    // Prefer default export if present, otherwise module itself.
+    // This handles both `export default router` and `module.exports = router` styles.
+    // Use (mod && mod.default) ?? mod to support both.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+    return (mod && (mod.default ?? mod)) as express.Router | null;
+  } catch (err: any) {
+    console.warn(`[app] Could not load router '${path}':`, err?.message ?? err);
+    return null;
+  }
+}
+
+/**
+ * Load routers defensively
+ */
+const parcelsRouter = tryLoadRouter("./routes/parcels.routes");
+const usersRouter = tryLoadRouter("./routes/users.routes");
+const authRouter = tryLoadRouter("./routes/auth.routes");
 
 /**
  * Express app
@@ -134,21 +159,33 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 /**
- * Public / auth routes
+ * Public / auth routes (only mount when router was loaded)
  */
 if (authRouter) {
   app.use("/api/auth", authRouter);
+} else {
+  console.warn("[app] auth router not mounted (auth.routes not available).");
 }
 
 /**
- * API routes
+ * Parcels router (mount only if available). This avoids runtime error if the file failed to compile.
  */
-app.use("/api/parcels", parcelsRouter);
+if (parcelsRouter) {
+  app.use("/api/parcels", parcelsRouter);
+} else {
+  console.warn(
+    "[app] parcels router not mounted (parcels.routes not available)."
+  );
+}
 
 /**
  * Protect admin user management routes with authentication + role check
  */
-app.use("/api/users", authenticate, allowRoles("admin"), usersRouter);
+if (usersRouter) {
+  app.use("/api/users", authenticate, allowRoles("admin"), usersRouter);
+} else {
+  console.warn("[app] users router not mounted (users.routes not available).");
+}
 
 /**
  * Dashboard summary: allow admin/sender/receiver
