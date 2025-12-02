@@ -1,64 +1,111 @@
 // src/services/auth.service.ts
-import User, { IUser } from "../models/User.model";
 import bcrypt from "bcryptjs";
-import * as jwt from "jsonwebtoken";
-import { Types } from "mongoose";
+import jwt from "jsonwebtoken";
+import * as userService from "./user.service";
+import User, { IUser } from "../models/User.model";
 
-const SALT_ROUNDS = Number(process.env.SALT_ROUNDS || 10);
+const JWT_SECRET = (process.env.JWT_SECRET || "changeme") as jwt.Secret;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const BCRYPT_SALT_ROUNDS = Number(process.env.SALT_ROUNDS ?? 10);
 
-// keep secrets typed as jwt.Secret
-const JWT_SECRET = (process.env.JWT_SECRET || "change_me") as jwt.Secret;
-const JWT_EXPIRES = process.env.JWT_EXPIRES || "15m";
-
-const REFRESH_SECRET = (process.env.REFRESH_TOKEN_SECRET ||
-  "change_refresh") as jwt.Secret;
-const REFRESH_EXPIRES = process.env.REFRESH_TOKEN_EXPIRES || "7d";
-
-export async function hashPassword(plain: string) {
-  return bcrypt.hash(plain, SALT_ROUNDS);
+export interface AuthPayload {
+  id: string;
+  email: string;
+  role: string;
 }
 
-export async function comparePassword(plain: string, hashed: string) {
-  return bcrypt.compare(plain, hashed);
-}
+/**
+ * Sign a JWT for a user. We cast expiresIn to `any` to satisfy the @types/jsonwebtoken
+ * signatures while preserving the runtime behavior.
+ */
+export function signToken(
+  user: IUser | { _id: any; email: string; role: string }
+): string {
+  if (!user) throw new Error("No user provided to signToken");
 
-export function signAccessToken(payload: Record<string, any>) {
-  // cast expiresIn to any to satisfy @types/jsonwebtoken's narrower type
-  const options: jwt.SignOptions = { expiresIn: JWT_EXPIRES as unknown as any };
+  const payload: AuthPayload = {
+    id: String((user as any)._id),
+    email: String((user as any).email),
+    role: String((user as any).role),
+  };
+
+  // Cast expiresIn to `any` so TS stops complaining about the union with undefined.
+  const options: jwt.SignOptions = {
+    expiresIn: JWT_EXPIRES_IN as unknown as any,
+  };
+
   return jwt.sign(payload, JWT_SECRET, options);
 }
 
-export function signRefreshToken(payload: Record<string, any>) {
-  const options: jwt.SignOptions = {
-    expiresIn: REFRESH_EXPIRES as unknown as any,
-  };
-  return jwt.sign(payload, REFRESH_SECRET, options);
+/**
+ * Register a new user:
+ * - check email uniqueness
+ * - hash password
+ * - create user via userService.createUser (should assign shortId)
+ * - return { token, user }
+ */
+export async function registerUser(input: {
+  name: string;
+  email: string;
+  password: string;
+  role?: "sender" | "receiver" | "admin" | string;
+}) {
+  const emailLower = input.email.trim().toLowerCase();
+  const existing = await userService.findByEmail(emailLower);
+  if (existing) {
+    throw new Error("Email already in use");
+  }
+
+  const hashed = await bcrypt.hash(input.password, BCRYPT_SALT_ROUNDS);
+
+  const user = await userService.createUser({
+    name: input.name,
+    email: emailLower,
+    password: hashed,
+    role: input.role ?? "sender",
+  });
+
+  const token = signToken(user as IUser);
+  return { token, user };
 }
 
-export async function saveRefreshToken(
-  userId: Types.ObjectId | string,
-  refreshToken: string
-) {
-  const hash = await bcrypt.hash(refreshToken, SALT_ROUNDS);
-  await User.findByIdAndUpdate(userId, { refreshTokenHash: hash });
+/**
+ * Login by email OR shortId.
+ * Client should send { email: value, password } where value may be an email or shortId.
+ */
+export async function loginUser(input: { email: string; password: string }) {
+  const loginId = input.email.trim();
+
+  // Query Mongoose directly to select the hashed password for comparison
+  let userDoc = (await User.findOne({ email: loginId.toLowerCase() })
+    .select("+password")
+    .exec()) as (IUser & { password?: string }) | null;
+
+  if (!userDoc) {
+    userDoc = (await User.findOne({ shortId: loginId })
+      .select("+password")
+      .exec()) as (IUser & { password?: string }) | null;
+  }
+
+  if (!userDoc || !userDoc.password) {
+    throw new Error("Invalid credentials");
+  }
+
+  const ok = await bcrypt.compare(input.password, userDoc.password);
+  if (!ok) throw new Error("Invalid credentials");
+
+  // Return clean user (without password)
+  const user = await userService.findById(String((userDoc as any)._id));
+  const token = signToken(user as IUser);
+
+  return { token, user };
 }
 
-export async function verifyRefreshToken(userId: string, token: string) {
-  const user = await User.findById(userId);
-  if (!user || !user.refreshTokenHash) return false;
-  return bcrypt.compare(token, user.refreshTokenHash);
-}
-
-export async function createUser(userPayload: Partial<IUser>) {
-  const hashed = await hashPassword(userPayload.password!);
-  const user = await User.create({ ...userPayload, password: hashed });
+/**
+ * Return the current authenticated user by id.
+ */
+export async function getMe(userId: string) {
+  const user = await userService.findById(userId);
+  if (!user) throw new Error("User not found");
   return user;
-}
-
-export async function findUserByEmail(email: string) {
-  return User.findOne({ email: email.toLowerCase() });
-}
-
-export async function findUserById(id: string) {
-  return User.findById(id);
 }
