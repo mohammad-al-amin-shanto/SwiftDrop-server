@@ -98,16 +98,19 @@ export async function listParcelsHandler(req: Request, res: Response) {
     const user = (req as any).user;
     const filters: any = { ...req.query };
 
+    // Role-based restriction
     if (user && user.role === "sender") filters.senderId = String(user.id);
     if (user && user.role === "receiver") filters.receiverId = String(user.id);
 
-    const { items, total } = await parcelService.listParcels({
+    // listParcels now returns { data, total }
+    const { data, total } = await parcelService.listParcels({
       filters,
       page,
       limit,
       sort,
     });
-    return res.json(buildPaginationResult(items, total, page, limit));
+
+    return res.json(buildPaginationResult(data, total, page, limit));
   } catch (err) {
     console.error("listParcelsHandler error:", err);
     return res.status(500).json({ status: "error", message: "Server error" });
@@ -150,12 +153,10 @@ export async function updateStatusHandler(req: Request, res: Response) {
     return res.json({ status: "success", data: updated });
   } catch (err: any) {
     console.error("updateStatusHandler error:", err);
-    return res
-      .status(400)
-      .json({
-        status: "fail",
-        message: err?.message || "Could not update status",
-      });
+    return res.status(400).json({
+      status: "fail",
+      message: err?.message || "Could not update status",
+    });
   }
 }
 
@@ -187,12 +188,10 @@ export async function cancelParcelHandler(req: Request, res: Response) {
     return res.json({ status: "success", data: cancelled });
   } catch (err: any) {
     console.error("cancelParcelHandler error:", err);
-    return res
-      .status(400)
-      .json({
-        status: "fail",
-        message: err?.message || "Could not cancel parcel",
-      });
+    return res.status(400).json({
+      status: "fail",
+      message: err?.message || "Could not cancel parcel",
+    });
   }
 }
 
@@ -213,9 +212,8 @@ export async function getStats(req: Request, res: Response) {
       sort: { createdAt: -1 as any },
     } as any);
 
-    const items: any[] = Array.isArray(listResult?.items)
-      ? listResult.items
-      : [];
+    // listParcels now returns { data, total }
+    const items: any[] = Array.isArray(listResult?.data) ? listResult.data : [];
     const total: number =
       typeof listResult?.total === "number" ? listResult.total : items.length;
 

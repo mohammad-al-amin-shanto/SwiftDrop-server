@@ -15,14 +15,13 @@ export interface CreateParcelDTO {
 
 /**
  * Create a parcel with a unique trackingId.
- * - We attempt to create the document directly with a generated trackingId.
- * - If a duplicate key error (race) occurs, we retry with a new id.
- * - This is more robust than "find then create" because it avoids TOCTOU races.
+ * - Try creating with generated trackingId.
+ * - On duplicate key error, retry with a new id (up to maxAttempts).
  */
 export async function createParcel(dto: CreateParcelDTO) {
   const maxAttempts = 6;
 
-  // convert string IDs to ObjectIds once (validate if necessary)
+  // convert string IDs to ObjectIds once
   const senderObjectId = new Types.ObjectId(dto.senderId);
   const receiverObjectId = new Types.ObjectId(dto.receiverId);
 
@@ -33,11 +32,10 @@ export async function createParcel(dto: CreateParcelDTO) {
     updatedBy: senderObjectId,
   };
 
-  // Try to create with unique trackingId, retry on duplicate-key error
   let lastError: unknown = null;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    // generate a candidate. generateTrackingId() returns e.g. SD-YYYYMMDD-XXXXXX
-    const candidate = generateTrackingId(); // default length = 6 rand chars
+    const candidate = generateTrackingId(); // e.g. SD-YYYYMMDD-XXXXXX
 
     try {
       const created = await Parcel.create({
@@ -52,13 +50,11 @@ export async function createParcel(dto: CreateParcelDTO) {
         statusLogs: [statusLog],
       } as Partial<IParcel>);
 
-      // success
       return created;
     } catch (err: any) {
       lastError = err;
 
-      // If the error is a duplicate key on trackingId, retry with a new candidate
-      // Mongo duplicate key code may be E11000 and message contains index name
+      // Duplicate key on trackingId → retry with a new id
       const isDupKey =
         err &&
         (err.code === 11000 ||
@@ -67,54 +63,89 @@ export async function createParcel(dto: CreateParcelDTO) {
             /duplicate.*key|E11000/i.test(err.message)));
 
       if (isDupKey) {
-        // collision: try again with a new id
         continue;
       }
 
-      // For other errors, rethrow immediately
+      // Other errors → rethrow
       throw err;
     }
   }
 
-  // If we reach here we failed to create after retries — surface a friendly message
   const friendly = new Error(
     "Failed to generate a unique tracking id after multiple attempts. Please try again."
   );
-  // attach last error for debugging
   (friendly as any).cause = lastError;
   throw friendly;
 }
 
 export async function getParcelByTrackingId(trackingId: string) {
   return Parcel.findOne({ trackingId })
-    .populate("senderId", "name email")
-    .populate("receiverId", "name email")
+    .populate("senderId", "name email phone address shortId")
+    .populate("receiverId", "name email phone address shortId")
     .exec();
 }
 
 export async function getParcelById(id: string) {
   if (!Types.ObjectId.isValid(id)) return null;
   return Parcel.findById(id)
-    .populate("senderId", "name email")
-    .populate("receiverId", "name email")
+    .populate("senderId", "name email phone address shortId")
+    .populate("receiverId", "name email phone address shortId")
     .exec();
 }
 
+/**
+ * Build a Mongo query from filters coming from the frontend.
+ * Supports:
+ * - status
+ * - senderId / receiverId
+ * - trackingId
+ * - search (or q) across origin/destination/trackingId
+ * - fromDate / toDate
+ * - dateRange: "7d" | "30d" | "90d" | "all"
+ */
 export async function buildParcelsQuery(filters: any) {
   const q: any = {};
+
   if (filters.status) q.status = filters.status;
   if (filters.senderId) q.senderId = filters.senderId;
   if (filters.receiverId) q.receiverId = filters.receiverId;
   if (filters.trackingId) q.trackingId = filters.trackingId;
-  if (filters.q) {
-    const regex = new RegExp(filters.q, "i");
+
+  // search alias (frontend sends `search`)
+  const search = filters.search ?? filters.q;
+  if (search) {
+    const regex = new RegExp(String(search), "i");
     q.$or = [{ origin: regex }, { destination: regex }, { trackingId: regex }];
   }
+
+  // date range via explicit from/to
   if (filters.fromDate || filters.toDate) {
     q.createdAt = {};
     if (filters.fromDate) q.createdAt.$gte = new Date(filters.fromDate);
     if (filters.toDate) q.createdAt.$lte = new Date(filters.toDate);
   }
+
+  // date range via "7d" | "30d" | "90d" | "all"
+  const dateRange = filters.dateRange;
+  if (dateRange && dateRange !== "all") {
+    let days = 0;
+    if (dateRange === "7d") days = 7;
+    else if (dateRange === "30d") days = 30;
+    else if (dateRange === "90d") days = 90;
+
+    if (days > 0) {
+      const now = new Date();
+      const from = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - days
+      );
+
+      q.createdAt = q.createdAt || {};
+      q.createdAt.$gte = from;
+    }
+  }
+
   return q;
 }
 
@@ -126,17 +157,20 @@ export async function listParcels({
 }: any) {
   const q = await buildParcelsQuery(filters);
   const skip = (page - 1) * limit;
+
   const [items, total] = await Promise.all([
     Parcel.find(q)
       .sort(sort)
       .skip(skip)
       .limit(limit)
-      .populate("senderId", "name email")
-      .populate("receiverId", "name email")
+      .populate("senderId", "name email phone address shortId")
+      .populate("receiverId", "name email phone address shortId")
       .exec(),
     Parcel.countDocuments(q).exec(),
   ]);
-  return { items, total };
+
+  // IMPORTANT: front-end expects { data, total }
+  return { data: items, total };
 }
 
 export async function updateParcelStatus(
@@ -168,9 +202,12 @@ export async function updateParcelStatus(
 export async function cancelParcel(parcelId: string, userId?: string) {
   const p = await getParcelById(parcelId);
   if (!p) return null;
+
+  // You can align these with your exact status strings later if needed
   if (["Dispatched", "InTransit", "Delivered"].includes((p as any).status)) {
     throw new Error("Cannot cancel parcel after dispatch");
   }
+
   (p as any).status = "Cancelled";
 
   const log: any = {
