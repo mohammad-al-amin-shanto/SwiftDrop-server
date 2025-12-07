@@ -40,6 +40,7 @@ export async function createParcelHandler(req: Request, res: Response) {
         .json({ status: "fail", message: "Missing required parcel fields" });
     }
 
+    // If receiverId looks like a shortId (not a valid ObjectId), try resolve to _id
     if (!Types.ObjectId.isValid(String(receiverId))) {
       const found = await userService.findByShortId(String(receiverId));
       if (!found) {
@@ -108,9 +109,11 @@ export async function listParcelsHandler(req: Request, res: Response) {
     const user = (req as any).user;
     const filters: Record<string, unknown> = { ...req.query };
 
+    // Role-based restriction
     if (user && user.role === "sender") filters.senderId = String(user.id);
     if (user && user.role === "receiver") filters.receiverId = String(user.id);
 
+    // listParcels returns { data, total }
     const { data, total } = await parcelService.listParcels({
       filters,
       page,
@@ -148,6 +151,7 @@ export async function updateStatusHandler(req: Request, res: Response) {
         .status(400)
         .json({ status: "fail", message: "Missing status" });
 
+    // Normalize to lowercase
     const status = String(rawStatus).toLowerCase() as ParcelStatus;
 
     if (!ALLOWED_STATUSES.includes(status)) {
@@ -220,9 +224,18 @@ export async function cancelParcelHandler(req: Request, res: Response) {
 
 /**
  * Stats (simple aggregated view)
+ *
+ * Mapping (after lowercasing):
+ * - "created"  -> pending
+ * - "pending"  -> pending
+ * - "delivered" -> delivered
+ * - "cancelled"/"Cancelled" -> cancelled
+ * - "dispatched" / "collected" / "in_transit" -> in transit
+ * - anything else is ignored for specific buckets but still part of `total`
  */
 export async function getStats(req: Request, res: Response) {
   try {
+    // If service has its own getStats, delegate
     if (typeof (parcelService as any).getStats === "function") {
       const stats = await (parcelService as any).getStats();
       return res.json({ status: "success", data: stats });
@@ -239,15 +252,34 @@ export async function getStats(req: Request, res: Response) {
     const total: number =
       typeof listResult?.total === "number" ? listResult.total : items.length;
 
-    const delivered = items.filter(
-      (p: any) => p?.status === "delivered"
-    ).length;
+    let delivered = 0;
+    let inTransit = 0;
+    let cancelled = 0;
+    let pending = 0;
 
-    const inTransit = items.filter(
-      (p: any) =>
-        p?.status && p.status !== "delivered" && p.status !== "cancelled"
-    ).length;
+    items.forEach((p: any) => {
+      const rawStatus = p?.status;
+      if (!rawStatus || typeof rawStatus !== "string") return;
 
+      const s = rawStatus.toLowerCase();
+
+      if (s === "created" || s === "pending") {
+        pending++;
+      } else if (s === "delivered") {
+        delivered++;
+      } else if (s === "cancelled") {
+        cancelled++;
+      } else if (
+        s === "dispatched" ||
+        s === "collected" ||
+        s === "in_transit"
+      ) {
+        inTransit++;
+      }
+      // else: unknown / legacy status, counted only in `total`
+    });
+
+    // Monthly aggregation (same as before)
     const monthlyMap: Record<string, number> = {};
     const now = new Date();
     for (let i = 0; i < 6; i++) {
@@ -267,7 +299,9 @@ export async function getStats(req: Request, res: Response) {
         2,
         "0"
       )}`;
-      if (monthlyMap[key] !== undefined) monthlyMap[key] = monthlyMap[key]! + 1;
+      if (monthlyMap[key] !== undefined) {
+        monthlyMap[key] = monthlyMap[key]! + 1;
+      }
     });
 
     const monthly = Object.keys(monthlyMap)
@@ -276,7 +310,15 @@ export async function getStats(req: Request, res: Response) {
 
     return res.json({
       status: "success",
-      data: { total, delivered, inTransit, monthly },
+      data: {
+        total,
+        delivered,
+        inTransit,
+        cancelled,
+        // we can send pending too (frontend can use it or ignore it)
+        pending,
+        monthly,
+      },
     });
   } catch (err) {
     console.error("getStats failed:", err);
