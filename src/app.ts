@@ -6,22 +6,19 @@ import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
 import { getDashboardSummary } from "./controllers/dashboard.controller";
-import { authenticate, allowRoles } from "./middleware/auth.middleware";
+import { authenticate } from "./middleware/auth.middleware";
+import { allowRoles } from "./middleware/role.middleware";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 
 /**
  * Defensive router loader:
  * Try require(...) and return default export or module itself.
- * If loading fails, return null and log a helpful message.
  */
 function tryLoadRouter(path: string) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-var-requires
     const mod = require(path);
-    // Prefer default export if present, otherwise module itself.
-    // This handles both `export default router` and `module.exports = router` styles.
-    // Use (mod && mod.default) ?? mod to support both.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return (mod && (mod.default ?? mod)) as express.Router | null;
   } catch (err: any) {
@@ -43,7 +40,6 @@ const authRouter = tryLoadRouter("./routes/auth.routes");
 const app = express();
 
 app.use((req, _res, next) => {
-  // helpful debug logging for incoming requests (origin + method + url)
   console.log(
     "Incoming Origin:",
     req.headers.origin,
@@ -81,16 +77,12 @@ const defaultAllowedHeaders = [
 
 /**
  * Utility: determine whether an incoming origin should be allowed.
- * - Accepts exact allowedOrigins
- * - Accepts any netlify.app hostname (handy for preview URLs)
- * - Returns true for no-origin (curl/Postman / server-to-server)
  */
 function isAllowedOrigin(originHeader?: string): boolean {
   if (!originHeader) return true; // allow tools / non-browser clients
   const normalized = originHeader.replace(/\/+$/, "");
   if (allowedOrigins.includes(normalized)) return true;
 
-  // Accept any subdomain under netlify.app (useful for preview deploys)
   try {
     const parsed = new URL(normalized);
     if (parsed.hostname.endsWith("netlify.app")) return true;
@@ -119,7 +111,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
       .json({ error: `CORS not allowed for origin ${normalized}` });
   }
 
-  // Allowed: reply with CORS headers and 204 No Content
   res.setHeader("Access-Control-Allow-Origin", originHeader || "*");
   res.setHeader("Access-Control-Allow-Methods", defaultCorsMethods.join(","));
   res.setHeader(
@@ -140,10 +131,9 @@ app.use(
       incomingOrigin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void
     ) => {
-      if (!incomingOrigin) return callback(null, true); // allow non-browser clients
+      if (!incomingOrigin) return callback(null, true);
       if (isAllowedOrigin(incomingOrigin)) return callback(null, true);
       console.warn("Blocked CORS origin (request):", incomingOrigin);
-      // Do not throw; just tell cors to disallow by passing false.
       return callback(null, false);
     },
     credentials: true,
@@ -159,7 +149,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 /**
- * Public / auth routes (only mount when router was loaded)
+ * Public / auth routes
  */
 if (authRouter) {
   app.use("/api/auth", authRouter);
@@ -168,7 +158,7 @@ if (authRouter) {
 }
 
 /**
- * Parcels router (mount only if available). This avoids runtime error if the file failed to compile.
+ * Parcels router
  */
 if (parcelsRouter) {
   app.use("/api/parcels", parcelsRouter);
@@ -179,7 +169,7 @@ if (parcelsRouter) {
 }
 
 /**
- * Protect admin user management routes with authentication + role check
+ * Users router — admin only
  */
 if (usersRouter) {
   app.use("/api/users", authenticate, allowRoles("admin"), usersRouter);
@@ -226,7 +216,6 @@ app.use((_req: Request, res: Response) => {
  * Central error handler
  */
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  // lightweight error normalization
   const status =
     typeof err === "object" && err !== null && "status" in err
       ? Number((err as { status?: unknown }).status) || 500

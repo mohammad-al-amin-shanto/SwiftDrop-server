@@ -30,20 +30,24 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>(
   {
     name: { type: String, required: true, trim: true },
+
     email: {
       type: String,
       required: true,
       unique: true,
-      index: true, // keep this
+      index: true,
       lowercase: true,
       trim: true,
     },
+
     password: { type: String, required: true, select: false },
+
     role: {
       type: String,
       enum: ["sender", "receiver", "admin", "delivery"],
       default: "sender",
     },
+
     shortId: {
       type: String,
       unique: true,
@@ -53,6 +57,7 @@ const UserSchema = new Schema<IUser>(
     },
 
     isBlocked: { type: Boolean, default: false },
+
     refreshTokenHash: { type: String, select: false, default: null },
 
     phone: { type: String, default: null },
@@ -62,10 +67,8 @@ const UserSchema = new Schema<IUser>(
     timestamps: true,
     collection: "users",
     toJSON: {
-      transform(_doc: any, ret: any) {
-        // remove sensitive/internal fields before sending to clients
+      transform(_doc, ret) {
         if (ret) {
-          // use `any` to avoid TS structural issues here
           delete (ret as any).password;
           delete (ret as any).refreshTokenHash;
         }
@@ -73,7 +76,7 @@ const UserSchema = new Schema<IUser>(
       },
     },
     toObject: {
-      transform(_doc: any, ret: any) {
+      transform(_doc, ret) {
         if (ret) {
           delete (ret as any).password;
           delete (ret as any).refreshTokenHash;
@@ -83,11 +86,5 @@ const UserSchema = new Schema<IUser>(
     },
   }
 );
-
-/*
- * NOTE: do NOT call `UserSchema.index({ email: 1 })` here because `email` already
- * has `index: true`. Removing duplicate index definitions avoids the duplicate-index
- * warning on startup.
- */
 
 export default model<IUser>("User", UserSchema);

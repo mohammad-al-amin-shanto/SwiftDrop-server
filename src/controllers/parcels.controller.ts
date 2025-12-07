@@ -8,7 +8,7 @@ import {
   buildPaginationResult,
 } from "../utilities/pagination";
 
-// Canonical status values used in the system
+// Canonical status values used in the system (lowercase only)
 export const ALLOWED_STATUSES = [
   "pending",
   "collected",
@@ -40,7 +40,6 @@ export async function createParcelHandler(req: Request, res: Response) {
         .json({ status: "fail", message: "Missing required parcel fields" });
     }
 
-    // If receiverId looks like a shortId (not a valid ObjectId), try resolve to _id
     if (!Types.ObjectId.isValid(String(receiverId))) {
       const found = await userService.findByShortId(String(receiverId));
       if (!found) {
@@ -109,7 +108,6 @@ export async function listParcelsHandler(req: Request, res: Response) {
     const user = (req as any).user;
     const filters: Record<string, unknown> = { ...req.query };
 
-    // Role-based restriction
     if (user && user.role === "sender") filters.senderId = String(user.id);
     if (user && user.role === "receiver") filters.receiverId = String(user.id);
 
@@ -128,7 +126,7 @@ export async function listParcelsHandler(req: Request, res: Response) {
 }
 
 /**
- * Update parcel status (admin/delivery)
+ * Update parcel status (admin/delivery/sender/receiver)
  */
 export async function updateStatusHandler(req: Request, res: Response) {
   try {
@@ -150,7 +148,7 @@ export async function updateStatusHandler(req: Request, res: Response) {
         .status(400)
         .json({ status: "fail", message: "Missing status" });
 
-    const status = String(rawStatus) as ParcelStatus;
+    const status = String(rawStatus).toLowerCase() as ParcelStatus;
 
     if (!ALLOWED_STATUSES.includes(status)) {
       return res.status(400).json({
@@ -245,7 +243,6 @@ export async function getStats(req: Request, res: Response) {
       (p: any) => p?.status === "delivered"
     ).length;
 
-    // consider "in transit" as any active non-delivered, non-cancelled
     const inTransit = items.filter(
       (p: any) =>
         p?.status && p.status !== "delivered" && p.status !== "cancelled"
