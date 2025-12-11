@@ -1,4 +1,3 @@
-// src/index.ts
 import app from "./app";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -22,7 +21,7 @@ async function start() {
     const User = (await import("./models/User.model")).default;
     const Parcel = (await import("./models/Parcel.model")).default;
 
-    // 3) runtime information (helpful for debugging)
+    // 2) runtime information (helpful for debugging)
     console.log("Mongoose model names:", mongoose.modelNames());
     // safe listing of existing collections
     try {
@@ -60,7 +59,7 @@ async function start() {
       console.warn("Failed to sync Parcel indexes:", (e as Error).message || e);
     }
 
-    // 5) start the server only after DB + indexes ready
+    // 3) start the server only after DB + indexes ready
     const server = app.listen(PORT, () => {
       console.log(
         `Server listening on http://localhost:${PORT} (env=${

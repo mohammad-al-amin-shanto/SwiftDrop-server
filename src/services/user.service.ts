@@ -1,4 +1,3 @@
-// src/services/user.service.ts
 import User, { IUser } from "../models/User.model";
 import { Types } from "mongoose";
 import generateShortId from "../utilities/generateShortId";
@@ -6,7 +5,7 @@ import generateShortId from "../utilities/generateShortId";
 export interface CreateUserDTO {
   name: string;
   email: string;
-  password: string; // already hashed by caller
+  password: string;
   role?: "sender" | "receiver" | "admin" | string;
   phone?: string | null;
   address?: string | null;

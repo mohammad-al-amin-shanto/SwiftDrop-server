@@ -1,4 +1,3 @@
-// src/utilities/generateTrackingId.ts
 import crypto from "crypto";
 
 /**

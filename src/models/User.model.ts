@@ -1,4 +1,3 @@
-// src/models/User.model.ts
 import { Schema, model, Document } from "mongoose";
 
 /**
@@ -6,16 +5,12 @@ import { Schema, model, Document } from "mongoose";
  */
 export type Role = "sender" | "receiver" | "admin" | "delivery";
 
-/**
- * IUser interface (Mongoose Document) representing the user.
- * Add or remove fields here to match your frontend `User` type.
- */
 export interface IUser extends Document {
   name: string;
   email: string;
-  password: string; // stored hashed; not returned by default because select: false
+  password: string;
   role: Role;
-  shortId?: string; // 8-character shareable id
+  shortId?: string;
   isBlocked: boolean;
   refreshTokenHash?: string | null;
   phone?: string | null;

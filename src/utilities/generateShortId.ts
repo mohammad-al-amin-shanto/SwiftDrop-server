@@ -1,4 +1,3 @@
-// src/utilities/generateShortId.ts
 /**
  * Generates an alphanumeric short id of given length.
  * Uses Node crypto for high-quality randomness; falls back to Math.random if needed.
@@ -11,7 +10,7 @@ export default function generateShortId(length = 8): string {
   if (length <= 0) return "";
 
   try {
-    const bytes = crypto.randomBytes(length); // Buffer
+    const bytes = crypto.randomBytes(length);
     let out = "";
 
     for (let i = 0; i < length; i++) {

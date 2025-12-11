@@ -1,4 +1,3 @@
-// src/services/parcel.service.ts
 import Parcel, { IParcel } from "../models/Parcel.model";
 import { Types } from "mongoose";
 import generateTrackingId from "../utilities/generateTrackingId";
@@ -22,11 +21,6 @@ export type ParcelStatus =
   | "delivered"
   | "cancelled";
 
-/**
- * Create a parcel with a unique trackingId.
- * - Try creating with generated trackingId.
- * - On duplicate key error, retry with a new id (up to maxAttempts).
- */
 export async function createParcel(dto: CreateParcelDTO) {
   const maxAttempts = 6;
 

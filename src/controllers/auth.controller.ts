@@ -1,4 +1,3 @@
-// src/controllers/auth.controller.ts
 import type { Request, Response } from "express";
 import * as authService from "../services/auth.service";
 
@@ -86,10 +85,6 @@ export async function meHandler(req: Request, res: Response) {
   }
 }
 
-/**
- * Optional: simple refresh token handler if you add refresh token support later.
- * For now it returns 501 (not implemented) so callers won't rely on missing functions.
- */
 export async function refreshTokenHandler(_req: Request, res: Response) {
   return res
     .status(501)

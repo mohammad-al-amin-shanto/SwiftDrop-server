@@ -1,4 +1,3 @@
-// src/routes/parcels.routes.ts
 import { Router } from "express";
 import * as parcelsController from "../controllers/parcels.controller";
 import { authenticate } from "../middleware/auth.middleware";
