@@ -53,3 +53,34 @@ export async function getDashboardSummary(req: Request, res: Response) {
     return res.status(500).json({ status: "error", message: "Server error" });
   }
 }
+
+/* ================= RECEIVER DASHBOARD ================= */
+
+import * as parcelService from "../services/parcel.service";
+
+export async function getReceiverDashboardSummary(req: Request, res: Response) {
+  try {
+    const user = (req as any).user;
+
+    if (!user?.id) {
+      return res
+        .status(401)
+        .json({ status: "fail", message: "Not authenticated" });
+    }
+
+    const stats = await parcelService.getReceiverDashboardStats(
+      String(user.id)
+    );
+
+    return res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (err) {
+    console.error("Receiver dashboard error:", err);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to load receiver dashboard",
+    });
+  }
+}

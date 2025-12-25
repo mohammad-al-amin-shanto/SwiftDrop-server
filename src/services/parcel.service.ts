@@ -234,3 +234,61 @@ export async function cancelParcel(parcelId: string, userId?: string) {
   await (p as any).save();
   return p;
 }
+
+/* ================= RECEIVER DASHBOARD STATS ================= */
+
+export async function getReceiverDashboardStats(receiverId: string) {
+  const receiverObjectId = new Types.ObjectId(receiverId);
+
+  // Fetch all receiver parcels (lean for performance)
+  const parcels = await Parcel.find({ receiverId: receiverObjectId })
+    .select("status statusLogs updatedAt")
+    .lean();
+
+  let totalExpected = parcels.length;
+  let inTransit = 0;
+  let delivered = 0;
+  let awaitingConfirmation = 0;
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  let arrivingToday = 0;
+
+  for (const p of parcels) {
+    const status = p.status;
+
+    if (
+      status === "collected" ||
+      status === "dispatched" ||
+      status === "in_transit"
+    ) {
+      inTransit++;
+    }
+
+    if (status === "delivered") {
+      delivered++;
+
+      // Check who delivered it
+      const lastLog = p.statusLogs?.[p.statusLogs.length - 1];
+
+      // If last update was NOT by receiver → awaiting confirmation
+      if (!lastLog?.updatedBy || String(lastLog.updatedBy) !== receiverId) {
+        awaitingConfirmation++;
+      }
+    }
+
+    // "Arriving today" heuristic (delivered today)
+    if (p.updatedAt && new Date(p.updatedAt) >= todayStart) {
+      arrivingToday++;
+    }
+  }
+
+  return {
+    totalExpected,
+    inTransit,
+    delivered,
+    awaitingConfirmation,
+    arrivingToday,
+  };
+}

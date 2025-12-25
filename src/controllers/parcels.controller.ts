@@ -1,4 +1,4 @@
-// src/controllers/parcels.controller.ts
+
 import type { Request, Response } from "express";
 import * as parcelService from "../services/parcel.service";
 import * as userService from "../services/user.service";
@@ -315,7 +315,6 @@ export async function getStats(req: Request, res: Response) {
         delivered,
         inTransit,
         cancelled,
-        // we can send pending too (frontend can use it or ignore it)
         pending,
         monthly,
       },

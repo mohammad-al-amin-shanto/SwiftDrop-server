@@ -1,4 +1,3 @@
-// src/app.ts
 /* eslint-disable @typescript-eslint/no-var-requires */
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
@@ -8,6 +7,7 @@ import helmet from "helmet";
 import { getDashboardSummary } from "./controllers/dashboard.controller";
 import { authenticate } from "./middleware/auth.middleware";
 import { allowRoles } from "./middleware/role.middleware";
+import dashboardRoutes from "./routes/dashboard.routes";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 
@@ -228,5 +228,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error("Server error:", err);
   res.status(status).json({ error: message });
 });
+
+app.use("/dashboard", dashboardRoutes);
 
 export default app;
