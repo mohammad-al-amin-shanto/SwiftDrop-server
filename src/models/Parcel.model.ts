@@ -41,9 +41,19 @@ const ParcelSchema = new Schema<IParcel>(
 
     status: {
       type: String,
+      enum: [
+        "pending",
+        "collected",
+        "dispatched",
+        "in_transit",
+        "delivered",
+        "received",
+        "cancelled",
+      ],
       default: "pending",
       index: true,
     },
+
     statusLogs: { type: [StatusLogSchema], default: [] },
     isBlocked: { type: Boolean, default: false },
   },

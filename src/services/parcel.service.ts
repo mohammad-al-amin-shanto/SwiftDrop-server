@@ -19,6 +19,16 @@ export type ParcelStatus =
   | "dispatched"
   | "in_transit"
   | "delivered"
+  | "received"
+  | "cancelled";
+
+type AdminParcelStatus =
+  | "pending"
+  | "collected"
+  | "dispatched"
+  | "in_transit"
+  | "delivered"
+  | "received"
   | "cancelled";
 
 export async function createParcel(dto: CreateParcelDTO) {
@@ -187,20 +197,38 @@ export async function updateParcelStatus(
   const p = await getParcelById(parcelId);
   if (!p) return null;
 
-  (p as any).status = status;
+  const current = (p.status || "").toLowerCase();
+
+  // 🔒 Transition rules
+  if (status === "received") {
+    if (current !== "delivered") {
+      throw new Error("Only delivered parcels can be received");
+    }
+  }
+
+  if (status === "cancelled") {
+    if (
+      ["dispatched", "in_transit", "delivered", "received"].includes(current)
+    ) {
+      throw new Error("Cannot cancel parcel at this stage");
+    }
+  }
+
+  p.status = status;
 
   const log: any = {
     status,
     timestamp: new Date(),
     note,
   };
+
   if (updatedBy) {
     log.updatedBy = new Types.ObjectId(updatedBy);
   }
 
-  (p as any).statusLogs.push(log as unknown as any);
+  p.statusLogs.push(log);
+  await p.save();
 
-  await (p as any).save();
   return p;
 }
 
@@ -213,6 +241,7 @@ export async function cancelParcel(parcelId: string, userId?: string) {
     "dispatched",
     "in_transit",
     "delivered",
+    "received",
   ];
 
   if (nonCancelableStatuses.includes((p as any).status)) {
@@ -268,14 +297,11 @@ export async function getReceiverDashboardStats(receiverId: string) {
 
     if (status === "delivered") {
       delivered++;
+      awaitingConfirmation++;
+    }
 
-      // Check who delivered it
-      const lastLog = p.statusLogs?.[p.statusLogs.length - 1];
-
-      // If last update was NOT by receiver → awaiting confirmation
-      if (!lastLog?.updatedBy || String(lastLog.updatedBy) !== receiverId) {
-        awaitingConfirmation++;
-      }
+    if (status === "received") {
+      delivered++;
     }
 
     // "Arriving today" heuristic (delivered today)
@@ -290,5 +316,94 @@ export async function getReceiverDashboardStats(receiverId: string) {
     delivered,
     awaitingConfirmation,
     arrivingToday,
+  };
+}
+
+/* ================= ADMIN DASHBOARD STATS ================= */
+
+export async function getAdminDashboardStats() {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [
+    totalParcels,
+    statusCounts,
+    todayCreated,
+    todayDelivered,
+    todayCancelled,
+    monthlyTrend,
+  ] = await Promise.all([
+    Parcel.countDocuments({}),
+    Parcel.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+    Parcel.countDocuments({ createdAt: { $gte: todayStart } }),
+    Parcel.countDocuments({
+      status: { $in: ["delivered", "received"] },
+      updatedAt: { $gte: todayStart },
+    }),
+    Parcel.countDocuments({
+      status: "cancelled",
+      updatedAt: { $gte: todayStart },
+    }),
+    Parcel.aggregate([
+      {
+        $project: {
+          month: {
+            $dateToString: { format: "%Y-%m", date: "$createdAt" },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$month",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+      { $limit: 6 },
+    ]),
+  ]);
+
+  const statusMap: Record<AdminParcelStatus, number> = {
+    pending: 0,
+    collected: 0,
+    dispatched: 0,
+    in_transit: 0,
+    delivered: 0,
+    received: 0,
+    cancelled: 0,
+  };
+
+  statusCounts.forEach((s: any) => {
+    if (s._id in statusMap) {
+      statusMap[s._id as AdminParcelStatus] = s.count;
+    }
+  });
+
+  return {
+    totals: {
+      totalParcels,
+      pending: statusMap.pending,
+      inTransit:
+        statusMap.collected + statusMap.dispatched + statusMap.in_transit,
+      delivered: statusMap.delivered + statusMap.received,
+      cancelled: statusMap.cancelled,
+    },
+    today: {
+      created: todayCreated,
+      delivered: todayDelivered,
+      cancelled: todayCancelled,
+    },
+    statusBreakdown: statusMap,
+    monthlyTrend: monthlyTrend.map((m: any) => ({
+      month: m._id,
+      count: m.count,
+    })),
   };
 }

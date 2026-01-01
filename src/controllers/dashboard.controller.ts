@@ -84,3 +84,28 @@ export async function getReceiverDashboardSummary(req: Request, res: Response) {
     });
   }
 }
+
+/* ================= ADMIN DASHBOARD ================= */
+
+export async function getAdminDashboardSummary(req: Request, res: Response) {
+  try {
+    const user = (req as any).user;
+
+    if (!user?.id || user.role !== "admin") {
+      return res.status(403).json({ status: "fail", message: "Forbidden" });
+    }
+
+    const stats = await parcelService.getAdminDashboardStats();
+
+    return res.json({
+      status: "success",
+      data: stats,
+    });
+  } catch (err) {
+    console.error("Admin dashboard error:", err);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to load admin dashboard",
+    });
+  }
+}

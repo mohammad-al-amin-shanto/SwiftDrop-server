@@ -4,12 +4,23 @@ import { allowRoles } from "../middleware/role.middleware";
 import {
   getDashboardSummary,
   getReceiverDashboardSummary,
+  getAdminDashboardSummary,
 } from "../controllers/dashboard.controller";
 
 const router = Router();
 
 /**
- * Admin / Global dashboard
+ * Admin dashboard (production)
+ */
+router.get(
+  "/admin",
+  authenticate,
+  allowRoles("admin"),
+  getAdminDashboardSummary
+);
+
+/**
+ * Legacy / summary (optional – keep if already used)
  */
 router.get("/summary", authenticate, allowRoles("admin"), getDashboardSummary);
 

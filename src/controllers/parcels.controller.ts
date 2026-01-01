@@ -1,4 +1,3 @@
-
 import type { Request, Response } from "express";
 import * as parcelService from "../services/parcel.service";
 import * as userService from "../services/user.service";
@@ -15,6 +14,7 @@ export const ALLOWED_STATUSES = [
   "dispatched",
   "in_transit",
   "delivered",
+  "received",
   "cancelled",
 ] as const;
 export type ParcelStatus = (typeof ALLOWED_STATUSES)[number];
@@ -161,6 +161,35 @@ export async function updateStatusHandler(req: Request, res: Response) {
       });
     }
 
+    /* 🔐 ROLE-BASED GUARDS */
+
+    // Only receiver can confirm "received"
+    if (status === "received" && user.role !== "receiver") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Only receiver can confirm received",
+      });
+    }
+
+    // Optional: sender cannot directly set delivered/received
+    if (
+      (status === "delivered" || status === "received") &&
+      user.role === "sender"
+    ) {
+      return res.status(403).json({
+        status: "fail",
+        message: "Sender cannot mark parcel as delivered or received",
+      });
+    }
+
+    // Admin cannot skip delivery confirmation
+    if (status === "received" && user.role === "admin") {
+      return res.status(403).json({
+        status: "fail",
+        message: "Admin cannot directly mark parcel as received",
+      });
+    }
+
     const note =
       typeof req.body?.note === "string" && req.body.note.trim().length
         ? req.body.note.trim()
@@ -265,7 +294,7 @@ export async function getStats(req: Request, res: Response) {
 
       if (s === "created" || s === "pending") {
         pending++;
-      } else if (s === "delivered") {
+      } else if (s === "delivered" || s === "received") {
         delivered++;
       } else if (s === "cancelled") {
         cancelled++;
