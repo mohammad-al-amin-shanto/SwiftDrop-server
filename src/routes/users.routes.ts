@@ -1,36 +1,20 @@
 import { Router } from "express";
 import {
   listUsersHandler,
-  blockUserHandler,
-  unblockUserHandler,
+  updateUserBlockStatus,
 } from "../controllers/users.controller";
-// import { requireAuth } from "../middleware/auth.middleware";
-// import { requireRole } from "../middleware/role.middleware";
+import { authenticate } from "../middleware/auth.middleware";
+import { allowRoles } from "../middleware/role.middleware";
 
 const router = Router();
 
-router.get(
-  "/",
-  // requireAuth,
-  // requireRole("admin"),
-  listUsersHandler
-);
+router.get("/", authenticate, allowRoles("admin"), listUsersHandler);
 
-router.put(
+router.patch(
   "/:id/block",
-  // requireAuth,
-  // requireRole("admin"),
-  blockUserHandler
-);
-
-/**
- * PUT /users/:id/unblock
- */
-router.put(
-  "/:id/unblock",
-  // requireAuth,
-  // requireRole("admin"),
-  unblockUserHandler
+  authenticate,
+  allowRoles("admin"),
+  updateUserBlockStatus
 );
 
 export default router;
