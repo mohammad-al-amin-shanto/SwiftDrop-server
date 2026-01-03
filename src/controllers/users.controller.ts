@@ -133,3 +133,46 @@ export async function updateUserBlockStatus(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * PATCH /users/:id
+ * Admin: update user role
+ */
+export async function updateUserHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    // Validate role
+    if (!role || !["sender", "receiver", "admin"].includes(role)) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Invalid role",
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { role },
+      { new: true }
+    ).select("-password -refreshTokenHash");
+
+    if (!user) {
+      return res.status(404).json({
+        status: "fail",
+        message: "User not found",
+      });
+    }
+
+    return res.json({
+      status: "success",
+      data: user,
+    });
+  } catch (err) {
+    console.error("updateUserHandler error:", err);
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to update user",
+    });
+  }
+}
