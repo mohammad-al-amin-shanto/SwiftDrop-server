@@ -22,7 +22,15 @@ router.get(
 /**
  * Legacy / summary (optional – keep if already used)
  */
-router.get("/summary", authenticate, allowRoles("admin"), getDashboardSummary);
+/**
+ * Dashboard summary: allow admin/sender/receiver
+ */
+router.get(
+  "/summary",
+  authenticate,
+  allowRoles("admin", "sender", "receiver"),
+  getDashboardSummary
+);
 
 /**
  * Receiver dashboard

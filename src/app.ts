@@ -178,16 +178,6 @@ if (usersRouter) {
 }
 
 /**
- * Dashboard summary: allow admin/sender/receiver
- */
-app.get(
-  "/api/dashboard/summary",
-  authenticate,
-  allowRoles("admin", "sender", "receiver"),
-  getDashboardSummary
-);
-
-/**
  * Healthcheck
  */
 app.get("/health", (_req: Request, res: Response) => {
@@ -204,6 +194,9 @@ app.get("/", (_req: Request, res: Response) => {
     uptime: process.uptime(),
   });
 });
+
+// Dashboard routes
+app.use("/api/dashboard", dashboardRoutes);
 
 /**
  * 404 handler
@@ -228,7 +221,5 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error("Server error:", err);
   res.status(status).json({ error: message });
 });
-
-app.use("/api/dashboard", dashboardRoutes);
 
 export default app;
