@@ -229,6 +229,6 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(status).json({ error: message });
 });
 
-app.use("/dashboard", dashboardRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 export default app;
